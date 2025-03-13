@@ -107,7 +107,7 @@ def sign_in_with_email_and_password(email, password):
             "returnSecureToken": True
         }
         payload = json.dumps(payload)
-        r = requests.post(rest_api_url, params={"key": "AIzaSyApr-etDzcGcsVcmaw7R7rPxx3A09as7uw"}, data=payload)
+        r = requests.post(rest_api_url, params={"key": ""}, data=payload)
         data = r.json()
         if 'email' in data:
             st.session_state.username = data.get('displayName', 'User')
@@ -127,7 +127,7 @@ def reset_password(email):
             "requestType": "PASSWORD_RESET"
         }
         payload = json.dumps(payload)
-        r = requests.post(rest_api_url, params={"key": "AIzaSyApr-etDzcGcsVcmaw7R7rPxx3A09as7uw"}, data=payload)
+        r = requests.post(rest_api_url, params={"key": ""}, data=payload)
         if r.status_code == 200:
             return True, "Reset email Sent"
         else:
