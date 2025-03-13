@@ -160,12 +160,12 @@ def local_css():
 st.set_page_config(
     page_title="Kanoon ki Pehchaan",
     page_icon="⚖️",
-    layout="wide",  # Use wide layout
+    layout="wide",   
     initial_sidebar_state="expanded"
 )
 local_css()
 
-# Initialize session state
+ 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "response_time" not in st.session_state:
@@ -173,13 +173,13 @@ if "response_time" not in st.session_state:
 if "chat_started" not in st.session_state:
     st.session_state.chat_started = False
 
-# Initialize model with caching
+ 
 @st.cache_resource
 def get_model():
     return ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.2)
 model = get_model()
 
-# Function to create the header
+ 
 def create_header():
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.markdown('<div class="flag-stripe"></div>', unsafe_allow_html=True)
@@ -187,7 +187,7 @@ def create_header():
     st.caption("Your AI-powered Guide to Indian Legal System")
     st.markdown('</div>', unsafe_allow_html=True)
 
-# Function to display chat messages with improved styling
+ 
 def display_messages():
     for message in st.session_state.messages:
         if message["role"] == "user":
@@ -239,12 +239,12 @@ def display_messages():
                 </div>
                 """, unsafe_allow_html=True)
 
-# Function to process user input
+
 def process_user_input(user_input):
-    # Add user message to chat history
+  
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    # Display the user message
+    
     with st.chat_message("user", avatar="👤"):
         st.markdown(f"""
         <div style="
@@ -269,7 +269,7 @@ def process_user_input(user_input):
         </div>
         """, unsafe_allow_html=True)
     
-    # Check if query is related to Indian law
+    
     is_legal_query = is_indian_law_related(user_input)
     
     with st.chat_message("assistant", avatar="⚖️"):
@@ -299,7 +299,7 @@ def process_user_input(user_input):
             """, unsafe_allow_html=True)
             st.session_state.messages.append({"role": "assistant", "content": response})
         else:
-            # Convert messages to LangChain format for the model
+            
             langchain_messages = []
             for message in st.session_state.messages:
                 if message["role"] == "system":
@@ -309,10 +309,9 @@ def process_user_input(user_input):
                 elif message["role"] == "assistant":
                     langchain_messages.append(AIMessage(content=message["content"]))
             
-            # Get AI response with timing
             start_time = time.time()
             with st.spinner("Researching Indian law..."):
-                # Enhance the prompt with Indian law focus
+                 
                 enhanced_prompt = (
                     f"{langchain_messages[-1].content} "
                     "Please provide information specifically in the context of Indian law, "
@@ -324,7 +323,7 @@ def process_user_input(user_input):
                 end_time = time.time()
                 st.session_state.response_time = end_time - start_time
                 
-                # Display the AI response
+               
                 st.markdown(f"""
                 <div style="
                     background: rgba(248, 249, 250, 0.2);
@@ -348,10 +347,10 @@ def process_user_input(user_input):
                 </div>
                 """, unsafe_allow_html=True)
             
-            # Add AI response to chat history
+            
             st.session_state.messages.append({"role": "assistant", "content": result.content})
 
-# Function to check if a query is related to Indian law
+ 
 def is_indian_law_related(query):
     query = query.lower()
     indian_legal_keywords = [
@@ -381,9 +380,9 @@ def is_indian_law_related(query):
             return True
     return False
 
-# Main app layout
+ 
 def main():
-    # Sidebar (informative and futuristic)
+     
     with st.sidebar:
         st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
         st.markdown("### ⚙️ About Kanoon ki Pehchaan")
