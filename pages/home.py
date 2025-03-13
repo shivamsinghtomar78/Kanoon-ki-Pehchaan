@@ -7,9 +7,18 @@ import time
 from datetime import datetime
 import re
 
-
+# Load environment variables
 load_dotenv()
 
+# Page configuration (set only once at the beginning)
+st.set_page_config(
+    page_title="Kanoon ki Pehchaan",
+    page_icon="⚖️",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Custom CSS for Kanoon ki Pehchaan
 def local_css():
     st.markdown("""
     <style>
@@ -127,6 +136,21 @@ def local_css():
             box-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
         }
 
+        /* Button styling */
+        .stButton button {
+            border-radius: 25px !important;
+            padding: 0.5rem 1rem !important;
+            background: linear-gradient(135deg, #ff9933 0%, #138808 100%);
+            color: #ffffff;
+            border: none;
+            transition: all 0.3s ease;
+        }
+
+        .stButton button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+        }
+
         /* Animations */
         @keyframes fadeIn {
             from { opacity: 0; }
@@ -152,34 +176,73 @@ def local_css():
         /* SEO-friendly meta tags */
         <meta name="description" content="Kanoon ki Pehchaan - Your AI-powered Guide to Indian Legal System. Get instant answers to your legal queries related to Indian laws.">
         <meta name="keywords" content="Indian law, legal assistant, AI, Kanoon ki Pehchaan, legal advice, Indian legal system">
-        <meta name="author" content="Your Name">
+        <meta name="author" content="Kanoon ki Pehchaan Team">
     </style>
     """, unsafe_allow_html=True)
 
-# Page configuration
-st.set_page_config(
-    page_title="Kanoon ki Pehchaan",
-    page_icon="⚖️",
-    layout="wide",   
-    initial_sidebar_state="expanded"
-)
+# Apply custom CSS
 local_css()
 
- 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "response_time" not in st.session_state:
-    st.session_state.response_time = 0
-if "chat_started" not in st.session_state:
-    st.session_state.chat_started = False
+# Initialize session state variables
+def init_session_state():
+    if "messages" not in st.session_state:
+        st.session_state.messages = [
+            {"role": "system", "content": "You are Kanoon ki Pehchaan, an AI assistant specialized in Indian law. Provide accurate information about Indian legal matters, citing relevant sections, acts, and case laws where applicable. Do not answer questions unrelated to Indian law."}
+        ]
+    if "response_time" not in st.session_state:
+        st.session_state.response_time = 0
+    if "chat_started" not in st.session_state:
+        st.session_state.chat_started = False
 
- 
+# Initialize LLM model with caching
 @st.cache_resource
 def get_model():
-    return ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.2)
-model = get_model()
+    try:
+        return ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.2)
+    except Exception as e:
+        st.error(f"Failed to initialize model: {e}")
+        return None
 
- 
+# Function to check if query is related to Indian law
+def is_indian_law_related(query):
+    if not query or not isinstance(query, str):
+        return False
+        
+    query = query.lower()
+    indian_legal_keywords = [
+        "indian", "india", "ipc", "crpc", "constitution", "section", "act", "law", "legal",
+        "supreme court", "high court", "district court", "tribunal", "judge", "advocate",
+        "petition", "writ", "fir", "case", "bill", "parliament", "legislation",
+        "fundamental rights", "directive principles", "preamble", "arrest", "bail",
+        "property", "marriage", "divorce", "inheritance", "contract", "company", 
+        "gst", "income tax", "consumer", "cyber", "digital", "reservation",
+        "pil", "public interest litigation", "article", "amendment", "ibc", "rbi",
+        "sebi", "ministry", "police", "criminal", "civil", "procedure", "evidence",
+        "negotiable instruments", "arbitration", "lok adalat", "nyaya panchayat",
+        "judicial review", "hindu", "muslim", "christian", "parsi", "personal law",
+        "lok sabha", "rajya sabha", "ordinance", "notification", "gazette"
+    ]
+    
+    # Check for keywords
+    for keyword in indian_legal_keywords:
+        if keyword in query:
+            return True
+    
+    # Check for regex patterns
+    patterns = [
+        r"section \d+", r"article \d+", r"ipc \d+", r"crpc \d+",
+        r"act of \d{4}", r"indian constitution", r"supreme court",
+        r"high court", r"lok adalat", r"legal rights in india",
+        r"indian penal", r"criminal procedure", r"civil procedure"
+    ]
+    
+    for pattern in patterns:
+        if re.search(pattern, query, re.IGNORECASE):
+            return True
+            
+    return False
+
+# Create header function
 def create_header():
     st.markdown('<div class="main-header">', unsafe_allow_html=True)
     st.markdown('<div class="flag-stripe"></div>', unsafe_allow_html=True)
@@ -187,7 +250,7 @@ def create_header():
     st.caption("Your AI-powered Guide to Indian Legal System")
     st.markdown('</div>', unsafe_allow_html=True)
 
- 
+# Display messages function
 def display_messages():
     for message in st.session_state.messages:
         if message["role"] == "user":
@@ -200,7 +263,7 @@ def display_messages():
                     border: 1px solid rgba(187, 222, 251, 0.3);
                     margin-bottom: 8px;
                     color: #ffffff;
-                    width: 100%;  /* Match input width */
+                    width: 100%;
                     animation: fadeInUp 0.5s ease-in-out;
                 ">
                     {message["content"]}
@@ -224,7 +287,7 @@ def display_messages():
                     border: 1px solid rgba(233, 236, 239, 0.3);
                     margin-bottom: 8px;
                     color: #ffffff;
-                    width: 100%;  /* Match input width */
+                    width: 100%;
                     animation: fadeInUp 0.5s ease-in-out;
                 ">
                     {message["content"]}
@@ -239,12 +302,15 @@ def display_messages():
                 </div>
                 """, unsafe_allow_html=True)
 
-
+# Process user input function
 def process_user_input(user_input):
-  
+    if not user_input or not user_input.strip():
+        return
+        
+    # Add user message to session state
     st.session_state.messages.append({"role": "user", "content": user_input})
     
-    
+    # Display user message
     with st.chat_message("user", avatar="👤"):
         st.markdown(f"""
         <div style="
@@ -254,7 +320,7 @@ def process_user_input(user_input):
             border: 1px solid rgba(187, 222, 251, 0.3);
             margin-bottom: 8px;
             color: #ffffff;
-            width: 100%;  /* Match input width */
+            width: 100%;
             animation: fadeInUp 0.5s ease-in-out;
         ">
             {user_input}
@@ -269,12 +335,12 @@ def process_user_input(user_input):
         </div>
         """, unsafe_allow_html=True)
     
-    
+    # Check if query is related to Indian law
     is_legal_query = is_indian_law_related(user_input)
     
     with st.chat_message("assistant", avatar="⚖️"):
         if not is_legal_query:
-            response = "I apologize, but I can only answer questions related to Indian law."
+            response = "I apologize, but I can only answer questions related to Indian law. Please rephrase your question to focus on Indian legal matters."
             st.markdown(f"""
             <div style="
                 background: rgba(248, 249, 250, 0.2);
@@ -283,7 +349,7 @@ def process_user_input(user_input):
                 border: 1px solid rgba(233, 236, 239, 0.3);
                 margin-bottom: 8px;
                 color: #ffffff;
-                width: 100%;  /* Match input width */
+                width: 100%;
                 animation: fadeInUp 0.5s ease-in-out;
             ">
                 {response}
@@ -294,12 +360,12 @@ def process_user_input(user_input):
                 text-align: right;
                 margin-top: 4px;
             ">
-                {datetime.now().strftime("%H:%M")} | ⏱️ {st.session_state.response_time:.1f}s
+                {datetime.now().strftime("%H:%M")} | ⏱️ 0.0s
             </div>
             """, unsafe_allow_html=True)
             st.session_state.messages.append({"role": "assistant", "content": response})
         else:
-            
+            # Prepare messages for LangChain
             langchain_messages = []
             for message in st.session_state.messages:
                 if message["role"] == "system":
@@ -309,82 +375,79 @@ def process_user_input(user_input):
                 elif message["role"] == "assistant":
                     langchain_messages.append(AIMessage(content=message["content"]))
             
-            start_time = time.time()
-            with st.spinner("Researching Indian law..."):
-                 
-                enhanced_prompt = (
-                    f"{langchain_messages[-1].content} "
-                    "Please provide information specifically in the context of Indian law, "
-                    "citing relevant sections, provisions, or case laws from India where applicable."
-                )
-                langchain_messages[-1] = HumanMessage(content=enhanced_prompt)
-                
-                result = model.invoke(langchain_messages)
-                end_time = time.time()
-                st.session_state.response_time = end_time - start_time
-                
-               
-                st.markdown(f"""
-                <div style="
-                    background: rgba(248, 249, 250, 0.2);
-                    padding: 12px;
-                    border-radius: 15px;
-                    border: 1px solid rgba(233, 236, 239, 0.3);
-                    margin-bottom: 8px;
-                    color: #ffffff;
-                    width: 100%;  /* Match input width */
-                    animation: fadeInUp 0.5s ease-in-out;
-                ">
-                    {result.content}
-                </div>
-                <div style="
-                    font-size: 0.8em;
-                    color: #e9ecef;
-                    text-align: right;
-                    margin-top: 4px;
-                ">
-                    {datetime.now().strftime("%H:%M")} | ⏱️ {st.session_state.response_time:.1f}s
-                </div>
-                """, unsafe_allow_html=True)
-            
-            
-            st.session_state.messages.append({"role": "assistant", "content": result.content})
+            # Process with Gemini
+            model = get_model()
+            if model:
+                start_time = time.time()
+                with st.spinner("Researching Indian law..."):
+                    # Enhance prompt with Indian law context
+                    enhanced_prompt = (
+                        f"{langchain_messages[-1].content} "
+                        "Please provide information specifically in the context of Indian law, "
+                        "citing relevant sections, provisions, or case laws from India where applicable."
+                    )
+                    langchain_messages[-1] = HumanMessage(content=enhanced_prompt)
+                    
+                    try:
+                        result = model.invoke(langchain_messages)
+                        end_time = time.time()
+                        st.session_state.response_time = end_time - start_time
+                        
+                        # Display assistant message
+                        st.markdown(f"""
+                        <div style="
+                            background: rgba(248, 249, 250, 0.2);
+                            padding: 12px;
+                            border-radius: 15px;
+                            border: 1px solid rgba(233, 236, 239, 0.3);
+                            margin-bottom: 8px;
+                            color: #ffffff;
+                            width: 100%;
+                            animation: fadeInUp 0.5s ease-in-out;
+                        ">
+                            {result.content}
+                        </div>
+                        <div style="
+                            font-size: 0.8em;
+                            color: #e9ecef;
+                            text-align: right;
+                            margin-top: 4px;
+                        ">
+                            {datetime.now().strftime("%H:%M")} | ⏱️ {st.session_state.response_time:.1f}s
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Add assistant message to session state
+                        st.session_state.messages.append({"role": "assistant", "content": result.content})
+                    except Exception as e:
+                        error_msg = f"I apologize, but I encountered an error while processing your request: {str(e)}. Please try again or rephrase your question."
+                        st.error(error_msg)
+                        st.session_state.messages.append({"role": "assistant", "content": error_msg})
+            else:
+                st.error("Could not initialize the AI model. Please try again later.")
 
- 
-def is_indian_law_related(query):
-    query = query.lower()
-    indian_legal_keywords = [
-        "indian", "india", "ipc", "crpc", "constitution", "section", "act", "law", "legal",
-        "supreme court", "high court", "district court", "tribunal", "judge", "advocate",
-        "petition", "writ", "fir", "case", "bill", "parliament", "legislation",
-        "fundamental rights", "directive principles", "preamble", "arrest", "bail",
-        "property", "marriage", "divorce", "inheritance", "contract", "company", 
-        "gst", "income tax", "consumer", "cyber", "digital", "reservation",
-        "pil", "public interest litigation", "article", "amendment", "ibc", "rbi",
-        "sebi", "ministry", "police", "criminal", "civil", "procedure", "evidence",
-        "negotiable instruments", "arbitration", "lok adalat", "nyaya panchayat",
-        "judicial review", "hindu", "muslim", "christian", "parsi", "personal law",
-        "lok sabha", "rajya sabha", "ordinance", "notification", "gazette"
-    ]
-    for keyword in indian_legal_keywords:
-        if keyword.lower() in query:
-            return True
-    patterns = [
-        r"section \d+", r"article \d+", r"ipc \d+", r"crpc \d+",
-        r"act of \d{4}", r"indian constitution", r"supreme court",
-        r"high court", r"lok adalat", r"legal rights in india",
-        r"indian penal", r"criminal procedure", r"civil procedure"
-    ]
-    for pattern in patterns:
-        if re.search(pattern, query, re.IGNORECASE):
-            return True
-    return False
-
- 
+# Main function
 def main():
-     
+    # Initialize session state
+    init_session_state()
+    
+    # Check authentication
+    if not st.session_state.get("authenticated", False):
+        st.warning("Please log in to access this page.")
+        st.switch_page("account.py")
+        return
+    
+    # Add logout button in sidebar
     with st.sidebar:
         st.markdown('<div class="sidebar-content">', unsafe_allow_html=True)
+        if st.button("Logout"):
+            # Clear session state and redirect to login page
+            for key in list(st.session_state.keys()):
+                del st.session_state[key]
+            st.switch_page("account.py")
+            st.stop()
+            
+        # Sidebar content
         st.markdown("### ⚙️ About Kanoon ki Pehchaan")
         st.markdown("""
             **Kanoon ki Pehchaan** is an AI-powered legal assistant designed to help you navigate the complexities of Indian law. 
@@ -406,20 +469,27 @@ def main():
 
     # Main content
     create_header()
+    
+    # Welcome message if chat hasn't started
     if not st.session_state.chat_started:
         st.info("🙏 Namaste! Welcome to Kanoon ki Pehchaan! I'm your Indian legal assistant. How can I help you understand Indian laws today?")
         st.session_state.chat_started = True
+        
+    # Display previous messages
     display_messages()
+    
+    # Chat input
     user_input = st.chat_input("Ask about Indian laws and legal matters...")
     if user_input:
         process_user_input(user_input)
 
     # Footer
+    total_chars = sum(len(m.get('content', '')) for m in st.session_state.messages)
     st.markdown(f'''
     <div class="footer">
         Powered by <strong>Gemini 1.5 Pro</strong> | 
         Response Time: {st.session_state.response_time:.1f}s | 
-        Characters Processed: {sum(len(m['content']) for m in st.session_state.messages)}
+        Characters Processed: {total_chars}
     </div>
     ''', unsafe_allow_html=True)
 

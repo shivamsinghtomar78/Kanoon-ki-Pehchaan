@@ -3,11 +3,53 @@ import firebase_admin
 from firebase_admin import credentials, auth
 import json
 import requests
+from dotenv import load_dotenv
+import os
+import logging
+from pathlib import Path
 
-# Initialize Firebase only if it hasn't been initialized already
-if not firebase_admin._apps:
-    cred = credentials.Certificate("kanoon-ki-pehchaan-6ff0ed4a9c13.json")
-    firebase_admin.initialize_app(cred)
+# Configure logging
+logging.basicConfig(level=logging.INFO, 
+                   format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
+api_key = os.getenv("FIREBASE_API_KEY")
+
+# Check if API key is available
+if not api_key:
+    logger.error("Firebase API key not found. Make sure to set the FIREBASE_API_KEY environment variable.")
+    st.error("Configuration error: Firebase API key not available. Please contact support.")
+
+# Initialize Firebase with credential file path checking
+def init_firebase():
+    try:
+        # Check if already initialized
+        if not firebase_admin._apps:
+            # Check if credential file exists
+            cred_file = "kanoon-ki-pehchaan-6ff0ed4a9c13.json"
+            if not Path(cred_file).exists():
+                logger.error(f"Firebase credential file not found: {cred_file}")
+                st.error("Configuration error: Firebase credentials not available. Please contact support.")
+                return False
+                
+            cred = credentials.Certificate(cred_file)
+            firebase_admin.initialize_app(cred)
+            logger.info("Firebase initialized successfully")
+        return True
+    except Exception as e:
+        logger.error(f"Failed to initialize Firebase: {e}")
+        st.error("An error occurred during initialization. Please try again later.")
+        return False
+
+# Page configuration
+st.set_page_config(
+    page_title="Kanoon ki Pehchaan",
+    page_icon="⚖️",
+    layout="centered",
+    initial_sidebar_state="collapsed"
+)
 
 # Custom CSS for Kanoon ki Pehchaan
 def local_css():
@@ -70,81 +112,176 @@ def local_css():
             transform: translateY(-2px);
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
         }
+
+        /* Authentication form styling */
+        .auth-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 2rem;
+            backdrop-filter: blur(10px);
+            max-width: 500px;
+            margin: 0 auto;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(-100%); }
+            to { transform: translateX(0); }
+        }
     </style>
     """, unsafe_allow_html=True)
 
-# Page configuration
-st.set_page_config(
-    page_title="Kanoon ki Pehchaan",
-    page_icon="⚖️",
-    layout="centered",
-    initial_sidebar_state="collapsed"
-)
+# Apply custom CSS
 local_css()
 
 # Firebase Authentication functions
 def sign_up_with_email_and_password(email, password, username=None):
+    if not email or not password:
+        st.error("Email and password are required.")
+        return False
+        
+    if not username:
+        username = email.split('@')[0]  # Default username from email if not provided
+        
     try:
+        # Initialize Firebase if not already initialized
+        if not init_firebase():
+            return False
+            
+        # Create user in Firebase
         user = auth.create_user(
             email=email,
             password=password,
             display_name=username
         )
+        
+        logger.info(f"User created successfully: {email}")
         st.success('Account created successfully!')
+        
+        # Set session state
         st.session_state.username = username
         st.session_state.useremail = email
-        st.session_state.signedout = True
-        st.session_state.signout = True
+        st.session_state.authenticated = True
+        
+        # Redirect to home page
+        st.switch_page("pages/home.py")
+        return True
     except Exception as e:
-        st.error(f'Signup failed: {e}')
+        error_message = str(e)
+        logger.error(f"Signup failed: {error_message}")
+        
+        # Provide user-friendly error messages
+        if "EMAIL_EXISTS" in error_message:
+            st.error("This email is already registered. Try logging in instead.")
+        elif "WEAK_PASSWORD" in error_message:
+            st.error("Password should be at least 6 characters long.")
+        elif "INVALID_EMAIL" in error_message:
+            st.error("Please enter a valid email address.")
+        else:
+            st.error(f"Signup failed: {error_message}")
+        return False
 
 def sign_in_with_email_and_password(email, password):
+    if not email or not password:
+        st.error("Email and password are required.")
+        return False
+        
     try:
+        # Make API request to Firebase Auth REST API
         rest_api_url = "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword"
         payload = {
             "email": email,
             "password": password,
             "returnSecureToken": True
         }
-        payload = json.dumps(payload)
-        r = requests.post(rest_api_url, params={"key": ""}, data=payload)
+        
+        # Send request
+        r = requests.post(rest_api_url, params={"key": api_key}, data=json.dumps(payload))
         data = r.json()
+        
+        # Check for successful login
         if 'email' in data:
+            logger.info(f"User logged in successfully: {email}")
+            
+            # Set session state
             st.session_state.username = data.get('displayName', 'User')
             st.session_state.useremail = data['email']
-            st.session_state.signedout = True
-            st.session_state.signout = True
+            st.session_state.authenticated = True
+            
+            # Redirect to home page
+            st.switch_page("pages/home.py")
+            return True
         else:
-            st.error(data.get('error', {}).get('message', 'Login failed'))
+            error_code = data.get('error', {}).get('message', 'Unknown error')
+            logger.error(f"Login failed: {error_code}")
+            
+            # Provide user-friendly error messages
+            if "EMAIL_NOT_FOUND" in error_code:
+                st.error("Email not found. Please check your email or sign up for a new account.")
+            elif "INVALID_PASSWORD" in error_code:
+                st.error("Invalid password. Please try again.")
+            elif "USER_DISABLED" in error_code:
+                st.error("This account has been disabled. Please contact support.")
+            else:
+                st.error(f"Login failed: {error_code}")
+            return False
     except Exception as e:
-        st.error(f'Signin failed: {e}')
+        logger.error(f"Signin failed: {e}")
+        st.error(f"An error occurred during login. Please try again later.")
+        return False
 
 def reset_password(email):
+    if not email:
+        return False, "Email address is required."
+        
     try:
+        # Make API request to Firebase Auth REST API
         rest_api_url = "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode"
         payload = {
             "email": email,
             "requestType": "PASSWORD_RESET"
         }
-        payload = json.dumps(payload)
-        r = requests.post(rest_api_url, params={"key": ""}, data=payload)
+        
+        # Send request
+        r = requests.post(rest_api_url, params={"key": api_key}, data=json.dumps(payload))
+        
+        # Check response
         if r.status_code == 200:
-            return True, "Reset email Sent"
+            logger.info(f"Password reset email sent to: {email}")
+            return True, "Password reset email sent successfully."
         else:
-            error_message = r.json().get('error', {}).get('message')
-            return False, error_message
+            error_message = r.json().get('error', {}).get('message', 'Unknown error')
+            logger.error(f"Password reset failed: {error_message}")
+            
+            # Provide user-friendly error messages
+            if "EMAIL_NOT_FOUND" in error_message:
+                return False, "Email not found. Please check your email address."
+            else:
+                return False, f"Password reset failed: {error_message}"
     except Exception as e:
-        return False, str(e)
+        logger.error(f"Password reset exception: {e}")
+        return False, f"An error occurred: {str(e)}"
 
 # Forget Password Function
 def forget():
-    email = st.text_input('Email')
+    st.subheader("Reset Password")
+    email = st.text_input('Email Address', key='reset_email')
+    
     if st.button('Send Reset Link'):
-        success, message = reset_password(email)
-        if success:
-            st.success("Password reset email sent successfully.")
+        if not email:
+            st.warning("Please enter your email address.")
         else:
-            st.warning(f"Password reset failed: {message}")
+            success, message = reset_password(email)
+            if success:
+                st.success(message)
+            else:
+                st.warning(message)
 
 # Authentication Page
 def auth_page():
@@ -154,42 +291,61 @@ def auth_page():
     st.caption("Your AI-powered Guide to Indian Legal System")
     st.markdown('</div>', unsafe_allow_html=True)
 
-    if 'username' not in st.session_state:
-        st.session_state.username = ''
-    if 'useremail' not in st.session_state:
-        st.session_state.useremail = ''
+    # Create tabs for Login and Signup
+    tab1, tab2, tab3 = st.tabs(["Login", "Sign Up", "Forgot Password"])
+    
+    with tab1:
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        st.subheader("Login to Your Account")
+        
+        email = st.text_input('Email Address', key='login_email')
+        password = st.text_input('Password', type='password', key='login_password')
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            if st.button('Login', key='login_button'):
+                if not email or not password:
+                    st.error('Please enter both email and password.')
+                else:
+                    sign_in_with_email_and_password(email, password)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    with tab2:
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        st.subheader("Create New Account")
+        
+        username = st.text_input('Username (Optional)', key='signup_username')
+        email = st.text_input('Email Address', key='signup_email')
+        password = st.text_input('Password', type='password', key='signup_password')
+        confirm_password = st.text_input('Confirm Password', type='password', key='signup_confirm_password')
+        
+        # Terms and conditions checkbox
+        terms_agree = st.checkbox('I agree to the Terms and Conditions')
+        
+        if st.button('Sign Up', key='signup_button'):
+            if not email or not password:
+                st.error('Please enter both email and password.')
+            elif password != confirm_password:
+                st.error('Passwords do not match.')
+            elif not terms_agree:
+                st.error('You must agree to the Terms and Conditions.')
+            else:
+                sign_up_with_email_and_password(email, password, username)
+        st.markdown('</div>', unsafe_allow_html=True)
+        
+    with tab3:
+        st.markdown('<div class="auth-container">', unsafe_allow_html=True)
+        forget()
+        st.markdown('</div>', unsafe_allow_html=True)
 
-    if not st.session_state.get("signedout", False):
-        choice = st.selectbox('Login/Signup', ['Login', 'Sign up'])
-        email = st.text_input('Email Address')
-        password = st.text_input('Password', type='password')
-        st.session_state.email_input = email
-        st.session_state.password_input = password
-
-        if choice == 'Sign up':
-            username = st.text_input("Enter your unique username")
-            if st.button('Create my account'):
-                sign_up_with_email_and_password(email=email, password=password, username=username)
-        else:
-            st.button('Login', on_click=lambda: sign_in_with_email_and_password(st.session_state.email_input, st.session_state.password_input))
-            forget()
-
-# Main Page
-def main_page():
-    st.title("Welcome to Kanoon ki Pehchaan")
-    st.write(f"Hello, {st.session_state.username}!")
-    st.write("This is the main page of the application.")
-
-    if st.button('Sign out'):
-        st.session_state.clear()
-        st.experimental_rerun()
+# Main function
+def main():
+    # Check if user is already authenticated
+    if st.session_state.get('authenticated', False):
+        st.switch_page("pages/home.py")
+    else:
+        auth_page()
 
 # Run the app
-def app():
-    if not st.session_state.get("signedout", False):
-        auth_page()
-    else:
-        main_page()
-
 if __name__ == "__main__":
-    app()
+    main()
