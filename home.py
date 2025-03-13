@@ -7,10 +7,9 @@ import time
 from datetime import datetime
 import re
 
-# Load environment variables
+
 load_dotenv()
 
-# Custom CSS for modern and futuristic UI
 def local_css():
     st.markdown("""
     <style>
