@@ -444,7 +444,7 @@ def main():
             # Clear session state and redirect to login page
             for key in list(st.session_state.keys()):
                 del st.session_state[key]
-            st.switch_page("account.py")
+            st.switch_page("auth.py")
             st.stop()
             
         # Sidebar content

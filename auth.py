@@ -342,7 +342,7 @@ def auth_page():
 def main():
     # Check if user is already authenticated
     if st.session_state.get('authenticated', False):
-        st.switch_page("pages/home.py")
+        st.switch_page("pages/1_home.py")
     else:
         auth_page()
 
