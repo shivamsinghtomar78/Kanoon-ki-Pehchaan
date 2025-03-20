@@ -1,6 +1,11 @@
 import streamlit as st
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import SystemMessage, HumanMessage
+from langchain.output_parsers import PydanticOutputParser
+from langchain.prompts import PromptTemplate
+from langchain.chains import LLMChain
+from pydantic import BaseModel, Field
+from typing import List
 from dotenv import load_dotenv
 import os
 import time
@@ -17,6 +22,40 @@ api_key = os.getenv("GOOGLE_API_KEY")
 # Initialize the language model
 llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", google_api_key=api_key)
 
+# Step 1: Define Pydantic Models for Structured Output
+class KeyPoint(BaseModel):
+    point: str = Field(description="A key point extracted from the document.")
+
+class Summary(BaseModel):
+    summary: str = Field(description="A brief summary of the document content.")
+
+class DocumentAnalysis(BaseModel):
+    key_points: List[KeyPoint] = Field(description="List of key points from the document.")
+    summary: Summary = Field(description="Summary of the document.")
+
+# Step 2: Set Up LangChain with Output Parsing
+parser = PydanticOutputParser(pydantic_object=DocumentAnalysis)
+
+# Define the prompt with instructions for the LLM
+prompt_template = """
+Analyze the following text and extract key points and a summary.
+{format_instructions}
+Text: {text}
+"""
+prompt = PromptTemplate(
+    template=prompt_template,
+    input_variables=["text"],
+    partial_variables={"format_instructions": parser.get_format_instructions()}
+)
+
+# Step 3: Chain the Components Together
+chain = LLMChain(llm=llm, prompt=prompt, output_parser=parser)
+
+# Function to analyze text and return structured data
+def analyze_text_structured(text):
+    output = chain.run(text=text)
+    return output
+
 # Function to extract text from a PDF file
 def extract_text_from_pdf(pdf_file):
     pdf_reader = PyPDF2.PdfReader(pdf_file)
@@ -25,11 +64,23 @@ def extract_text_from_pdf(pdf_file):
         text += page.extract_text()
     return text
 
-# Function to analyze the extracted text using the language model
-def analyze_text(text):
-    response = llm([SystemMessage(content="Analyze the following text and provide a summary and key insights:"),
-                    HumanMessage(content=text)])
-    return response.content
+# Function to convert JSON to text format
+def json_to_text(analysis):
+    """
+    Convert the structured JSON analysis into a simple text format.
+    """
+    text_output = ""
+
+    # Add summary
+    text_output += "=== Summary ===\n"
+    text_output += f"{analysis.summary.summary}\n\n"
+
+    # Add key points
+    text_output += "=== Key Points ===\n"
+    for i, key_point in enumerate(analysis.key_points, start=1):
+        text_output += f"{i}. {key_point.point}\n"
+
+    return text_output
 
 # Function to create a PDF report from the analysis
 def create_pdf_report(analysis):
@@ -38,8 +89,10 @@ def create_pdf_report(analysis):
     pdf.set_font('Helvetica', '', 12)
     pdf.cell(200, 10, txt="PDF Analysis Report", ln=True, align='C')
     pdf.cell(200, 10, txt=f"Generated on: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", ln=True, align='C')
-    clean_text = ''.join(c if ord(c) < 256 else ' ' for c in analysis)  # Sanitize text for PDF compatibility
-    pdf.multi_cell(0, 10, txt=f"Analysis:\n{clean_text}")
+    
+    # Convert JSON to text
+    clean_text = json_to_text(analysis)
+    pdf.multi_cell(0, 10, txt=clean_text)
     return pdf.output(dest='S')  # Return PDF as bytes
 
 # Function to create a Word report from the analysis
@@ -47,8 +100,12 @@ def create_word_report(analysis):
     doc = Document()
     doc.add_heading('PDF Analysis Report', 0)
     doc.add_paragraph(f'Generated on: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}')
+    
+    # Convert JSON to text
+    clean_text = json_to_text(analysis)
     doc.add_heading('Analysis', level=1)
-    doc.add_paragraph(analysis)
+    doc.add_paragraph(clean_text)
+    
     docx_bytes = io.BytesIO()
     doc.save(docx_bytes)
     docx_bytes.seek(0)
@@ -174,14 +231,17 @@ if uploaded_file is not None:
     if st.button("Analyze Text"):
         start_time = time.time()
         with st.spinner("Analyzing..."):
-            analysis = analyze_text(text)
+            analysis = analyze_text_structured(text)
             st.session_state.pdf_summary = analysis
             st.session_state.pdf_report = create_pdf_report(analysis)
             st.session_state.word_report = create_word_report(analysis)
         end_time = time.time()
         st.session_state.analysis_time = end_time - start_time
         st.subheader("Analysis Results")
-        st.write(analysis)
+        
+        # Display analysis in text format
+        st.text(json_to_text(analysis))
+        
         st.download_button(
             label="Download PDF Report",
             data=st.session_state.pdf_report,
